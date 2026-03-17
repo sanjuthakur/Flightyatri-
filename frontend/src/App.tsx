@@ -261,14 +261,6 @@ export function App() {
             <span>Mobile-first layout</span>
           </div>
         </div>
-        <div className="trust-card">
-          <p className="eyebrow">Guardrails</p>
-          <ul>
-            <li>Timestamp every result with freshness metadata.</li>
-            <li>Do not fabricate gate or timing data when unavailable.</li>
-            <li>Prompt for clarification if multiple flights match.</li>
-          </ul>
-        </div>
       </section>
 
       <section className="dashboard-grid">

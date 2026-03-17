@@ -61,13 +61,12 @@ button {
 }
 
 .hero-panel {
-  grid-template-columns: 1.65fr 1fr;
+  grid-template-columns: 1fr;
   margin-bottom: 18px;
 }
 
 .hero-copy,
-.panel,
-.trust-card {
+.panel {
   backdrop-filter: blur(18px);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -108,17 +107,6 @@ button {
   color: var(--brand-dark);
   border-radius: 999px;
   padding: 10px 14px;
-}
-
-.trust-card {
-  padding: 24px;
-}
-
-.trust-card ul {
-  margin: 14px 0 0;
-  padding-left: 18px;
-  color: var(--muted);
-  line-height: 1.7;
 }
 
 .dashboard-grid,
@@ -395,8 +383,7 @@ button:disabled {
   }
 
   .hero-copy,
-  .panel,
-  .trust-card {
+  .panel {
     border-radius: 22px;
     padding: 18px;
   }
