@@ -1,19 +1,17 @@
 import { Router } from "express";
 import { z } from "zod";
+import { FlightAPI } from "../services/flightAPI.js";
 import {
   airports,
   featuredFlightNumbers,
   findAirport,
-  findFlightsByNumber,
-  findFlightsByRoute,
-  flights,
   normalizeFlightNumber
 } from "../data/flights.js";
 
 const routeSearchSchema = z.object({
   from: z.string().trim().min(3).max(3).transform((value) => value.toUpperCase()),
   to: z.string().trim().min(3).max(3).transform((value) => value.toUpperCase()),
-  date: z.string().date(),
+  date: z.string().optional(),
   adults: z.coerce.number().int().min(1).max(9).default(1)
 });
 
@@ -26,84 +24,87 @@ const flightNumberSchema = z.object({
   date: z.string().date().optional()
 });
 
-function buildFreshness(lastUpdated: string) {
-  return {
-    updatedAt: lastUpdated,
-    disclaimer: "Operational flight data can change in real time. Verify with the airline or airport display for critical updates."
-  };
-}
-
-function serializeFlight(flight: (typeof flights)[number], date?: string) {
-  return {
-    ...flight,
-    date: date ?? new Date().toISOString().slice(0, 10),
-    freshness: buildFreshness(flight.lastUpdated)
-  };
-}
+// Initialize flight API service
+const flightAPI = new FlightAPI();
 
 export const flightsRouter = Router();
 
-flightsRouter.get("/", (req, res) => {
-  const result = routeSearchSchema.safeParse(req.query);
-  if (!result.success) {
-    return res.status(400).json({
-      message: "Invalid query parameters",
-      errors: result.error.issues
+flightsRouter.get("/", async (req, res) => {
+  try {
+    const result = routeSearchSchema.safeParse(req.query);
+    if (!result.success) {
+      return res.status(400).json({
+        message: "Invalid query parameters",
+        errors: result.error.issues
+      });
+    }
+
+    const { from, to, date, adults } = result.data;
+
+    // Fetch real flight data from AviationStack API
+    const flightData = await flightAPI.getFlightsByRoute(from, to, date);
+
+    return res.status(200).json({
+      total: flightData.length,
+      from,
+      to,
+      date,
+      adults,
+      freshness: {
+        source: "AviationStack Live API",
+        updatedAt: new Date().toISOString(),
+        disclaimer: "Live operational data may change in real time. Verify with the airline or airport display for critical updates."
+      },
+      flights: flightData.slice(0, 10) // Limit to 10 results
+    });
+  } catch (error) {
+    console.error('Flight search error:', error);
+    return res.status(500).json({
+      message: "Failed to fetch flight data",
+      error: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
     });
   }
-
-  const { from, to, date, adults } = result.data;
-  const matches = findFlightsByRoute(from, to, adults).map((flight) => serializeFlight(flight, date));
-
-  return res.status(200).json({
-    total: matches.length,
-    from,
-    to,
-    date,
-    adults,
-    freshness: {
-      source: "Mock live operations feed",
-      indiaCoverage: "Flights arriving into India, departing from India, and key domestic routes."
-    },
-    flights: matches
-  });
 });
 
-flightsRouter.get("/status", (req, res) => {
-  const result = flightNumberSchema.safeParse(req.query);
-  if (!result.success) {
-    return res.status(400).json({
-      message: "flightNumber is required",
-      errors: result.error.issues
+flightsRouter.get("/status", async (req, res) => {
+  try {
+    const result = flightNumberSchema.safeParse(req.query);
+    if (!result.success) {
+      return res.status(400).json({
+        message: "flightNumber is required",
+        errors: result.error.issues
+      });
+    }
+
+    const { flightNumber, date } = result.data;
+
+    // Fetch real flight data from AviationStack API
+    const flightData = await flightAPI.getFlightByNumber(flightNumber);
+
+    if (flightData.length === 0) {
+      return res.status(404).json({
+        message: "Flight not found",
+        guidance: "No flight matched that number. Please verify the flight number."
+      });
+    }
+
+    return res.status(200).json({
+      total: flightData.length,
+      flightNumber,
+      freshness: {
+        source: "AviationStack Live API",
+        updatedAt: new Date().toISOString(),
+        disclaimer: "Live operational data may change in real time. Verify with the airline or airport display for critical updates."
+      },
+      flights: flightData
+    });
+  } catch (error) {
+    console.error('Flight status error:', error);
+    return res.status(500).json({
+      message: "Failed to fetch flight status",
+      error: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
     });
   }
-
-  const { flightNumber, date } = result.data;
-  const matches = findFlightsByNumber(flightNumber);
-
-  if (matches.length === 0) {
-    return res.status(404).json({
-      message: "Flight not found",
-      guidance: "No supported flight matched that number. Please verify the airline code and number."
-    });
-  }
-
-  if (matches.length > 1) {
-    return res.status(409).json({
-      message: "Multiple flights matched. Please add route or date context.",
-      matches: matches.map((flight) => ({
-        flightNumber: flight.flightNumber,
-        airline: flight.airline,
-        from: flight.from,
-        to: flight.to
-      }))
-    });
-  }
-
-  return res.status(200).json({
-    flight: serializeFlight(matches[0], date),
-    source: "Mock live operations feed"
-  });
 });
 
 flightsRouter.get("/airports", (req, res) => {

@@ -1,52 +1,56 @@
 # FlightYatri AI
 
-India-focused flight status MVP with a conversational web interface, mock live operations backend, and deployment-ready monorepo structure.
+India-focused flight status MVP with a conversational web interface, real-time flight data via AviationStack API, and LLM-powered natural language processing using OpenAI.
 
 ## What is implemented
 
-- Flight status lookup by flight number
-- Route-based search for India domestic, arriving-to-India, and departing-from-India coverage
-- Conversational assistant endpoint with guarded fallback behavior
-- Freshness metadata and operational disclaimer on results
+- **LLM-powered chat assistant** using OpenAI GPT for natural language understanding
+- **Real-time flight data** from AviationStack API (global coverage)
+- Flight status lookup by flight number or natural language queries
+- Route-based search with airport name/city/IATA code recognition
+- Conversational assistant endpoint with intelligent fallback behavior
 - Responsive React web UI with status board, watched flights, route search, and chat panel
 
 ## Stack
 
-- Frontend: React + Vite + TypeScript
-- Backend: Node.js + Express + TypeScript
-- Deploy target:
+- **Frontend**: React + Vite + TypeScript
+- **Backend**: Node.js + Express + TypeScript
+- **AI**: OpenAI GPT-3.5-turbo for natural language processing
+- **Flight Data**: AviationStack API for real-time flight information
+- **Deploy target**:
   - Frontend on Vercel
   - Backend on Render
 
-## Project structure
+## Setup
 
-```text
-.
-|- backend
-|- frontend
-|- FlightYatri.md
-`- render.yaml
-```
+### Prerequisites
 
-## Local development
+1. **OpenAI API Key**: Sign up at [OpenAI](https://platform.openai.com/) and get an API key
+2. **AviationStack API Key**: Sign up at [AviationStack](https://aviationstack.com/) for a free API key
 
-### Backend
+### Backend Setup
 
 ```bash
 cd backend
 npm install
+cp .env.example .env
+# Edit .env and add your API keys:
+# OPENAI_API_KEY=your_openai_key
+# AVIATIONSTACK_API_KEY=your_aviationstack_key
 npm run dev
 ```
 
 API runs at `http://localhost:8080`.
 
-### Frontend
+### Frontend Setup
 
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+
+Frontend runs at `http://localhost:5173`.
 
 Web app runs at `http://localhost:5173`.
 

@@ -1,107 +1,83 @@
 import { Router } from "express";
 import { z } from "zod";
-import {
-  findAirport,
-  findFlightsByNumber,
-  findFlightsByRoute,
-  normalizeFlightNumber
-} from "../data/flights.js";
+import { LLMService, FlightQuery } from "../services/llmService.js";
+import { FlightAPI } from "../services/flightAPI.js";
+import { findAirport } from "../data/flights.js";
 
 const chatSchema = z.object({
   message: z.string().trim().min(2).max(300)
 });
 
-function extractFlightNumber(message: string) {
-  const match = message.toUpperCase().match(/\b([A-Z0-9]{2,3})[-\s]?(\d{2,4})\b/);
-  if (!match) {
-    return null;
-  }
-
-  return normalizeFlightNumber(`${match[1]}${match[2]}`);
-}
-
-function extractRoute(message: string) {
-  const routeMatch = message.match(/from\s+([a-zA-Z\s]{3,})\s+to\s+([a-zA-Z\s]{3,})/i);
-  if (!routeMatch) {
-    return null;
-  }
-
-  const from = findAirport(routeMatch[1].trim());
-  const to = findAirport(routeMatch[2].trim());
-
-  if (!from || !to) {
-    return null;
-  }
-
-  return { from, to };
-}
+// Initialize services
+const llmService = new LLMService();
+const flightAPI = new FlightAPI();
 
 export const chatRouter = Router();
 
-chatRouter.post("/", (req, res) => {
-  const result = chatSchema.safeParse(req.body);
-  if (!result.success) {
-    return res.status(400).json({
-      message: "A message is required to query the chat assistant.",
-      errors: result.error.issues
-    });
-  }
+chatRouter.post("/", async (req, res) => {
+  try {
+    const result = chatSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({
+        message: "A message is required to query the chat assistant.",
+        errors: result.error.issues
+      });
+    }
 
-  const message = result.data.message;
-  const normalizedFlightNumber = extractFlightNumber(message);
+    const message = result.data.message;
 
-  if (normalizedFlightNumber) {
-    const matches = findFlightsByNumber(normalizedFlightNumber);
+    // Parse the query using LLM
+    const query = await llmService.parseFlightQuery(message);
 
-    if (matches.length === 1) {
-      const [flight] = matches;
+    let flightData = null;
+    let responseData: any = {
+      intent: query.intent,
+      confidence: query.confidence,
+    };
 
-      return res.status(200).json({
-        intent: "flight_status",
-        reply: `${flight.flightNumber} is currently ${flight.statusLabel.toLowerCase()}. Scheduled departure ${flight.scheduledDeparture}, estimated departure ${flight.estimatedDeparture}, terminal ${flight.departureTerminal}${flight.departureGate ? `, gate ${flight.departureGate}` : ""}. ${flight.notes}`,
-        flight,
-        freshness: {
-          updatedAt: flight.lastUpdated,
-          disclaimer: "Live operational data may change in real time. Verify with the airline or airport display for critical updates."
+    try {
+      // Fetch real flight data based on the parsed query
+      if (query.intent === 'flight_status' && query.flightNumber) {
+        flightData = await flightAPI.getFlightByNumber(query.flightNumber);
+      } else if (query.intent === 'route_search' && query.departureAirport && query.arrivalAirport) {
+        // Try to find airport codes
+        const depAirport = findAirport(query.departureAirport);
+        const arrAirport = findAirport(query.arrivalAirport);
+
+        if (depAirport && arrAirport) {
+          flightData = await flightAPI.getFlightsByRoute(depAirport.code, arrAirport.code, query.date);
+        } else {
+          // Try with the provided strings directly (might be IATA codes)
+          flightData = await flightAPI.getFlightsByRoute(query.departureAirport, query.arrivalAirport, query.date);
         }
-      });
+      }
+    } catch (apiError) {
+      console.error('Flight API error:', apiError);
+      // Continue with LLM response generation even if API fails
     }
 
-    if (matches.length > 1) {
-      return res.status(200).json({
-        intent: "clarification",
-        reply: "Multiple flights matched that number. Please add route or date so I can narrow it down safely.",
-        matches: matches.map((flight) => ({
-          flightNumber: flight.flightNumber,
-          from: flight.from,
-          to: flight.to,
-          airline: flight.airline
-        }))
-      });
-    }
-  }
+    // Generate natural language response using LLM
+    const reply = await llmService.generateResponse(query, flightData);
 
-  const route = extractRoute(message);
-  if (route) {
-    const matches = findFlightsByRoute(route.from.code, route.to.code).slice(0, 5);
+    responseData.reply = reply;
 
-    if (matches.length === 0) {
-      return res.status(200).json({
-        intent: "route_search",
-        reply: `I could not find a supported flight for ${route.from.city} to ${route.to.city} in the current feed. Please try a flight number or another route.`
-      });
+    // Add flight data if available
+    if (flightData && flightData.length > 0) {
+      responseData.flights = flightData.slice(0, 5); // Limit to 5 results
+      responseData.freshness = {
+        updatedAt: new Date().toISOString(),
+        disclaimer: "Live operational data may change in real time. Verify with the airline or airport display for critical updates."
+      };
     }
 
-    return res.status(200).json({
-      intent: "route_search",
-      reply: `I found ${matches.length} flights from ${route.from.city} to ${route.to.city}. The first match is ${matches[0].flightNumber} on ${matches[0].airline}, currently ${matches[0].statusLabel.toLowerCase()}.`,
-      flights: matches
+    return res.status(200).json(responseData);
+
+  } catch (error) {
+    console.error('Chat processing error:', error);
+    return res.status(500).json({
+      intent: "error",
+      reply: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.",
+      error: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
     });
   }
-
-  return res.status(200).json({
-    intent: "fallback",
-    reply:
-      "Ask for a flight number like AI101 or a route like flights from Delhi to Mumbai. I will avoid guessing when the query is ambiguous."
-  });
 });
