@@ -3,6 +3,7 @@ import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 import { env } from "./config/env.js";
+import { chatRouter } from "./routes/chat.js";
 import { flightsRouter } from "./routes/flights.js";
 import { healthRouter } from "./routes/health.js";
 
@@ -20,18 +21,22 @@ app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 app.get("/", (_req, res) => {
   res.status(200).json({
     message: "FlightYatri API",
+    description: "India-focused flight status and conversational query backend.",
     docs: {
       health: "/health",
-      flights: "/api/v1/flights?from=DEL&to=BOM&date=2026-03-20&adults=1",
-      airports: "/api/v1/flights/airports?query=del"
+      routeSearch: "/api/v1/flights?from=DEL&to=BOM&date=2026-03-20&adults=1",
+      status: "/api/v1/flights/status?flightNumber=AI101",
+      airports: "/api/v1/flights/airports?query=del",
+      highlights: "/api/v1/flights/highlights",
+      chat: "POST /api/v1/chat"
     }
   });
 });
 
 app.use("/health", healthRouter);
 app.use("/api/v1/flights", flightsRouter);
+app.use("/api/v1/chat", chatRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
-

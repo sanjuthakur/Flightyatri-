@@ -10,4 +10,5 @@ services:
         value: production
       - key: PORT
         value: 10000
-
+      - key: CLIENT_ORIGIN
+        value: https://your-frontend-domain.vercel.app
